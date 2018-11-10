@@ -1,0 +1,288 @@
+# Created 2018-11-10 Sat 18:54
+#+TITLE: go through first chapter
+#+AUTHOR: Andrea Giugliano
+Let's fix the look for my dark theme:
+
+#+BEGIN_SRC elisp
+(load-file (let ((coding-system-for-read 'utf-8))
+                (shell-command-to-string "agda-mode locate")))
+;; make stuff readable in dark theme: https://www.reddit.com/r/agda/comments/5pwip4/show_off_your_agda_emacs_colours/
+ (let ((base03    "#002b36")
+        (base02    "#073642")
+        (base01    "#586e75")
+        (base00    "#657b83")
+        (base0     "#839496")
+        (base1     "#93a1a1")
+        (base2     "#eee8d5")
+        (base3     "#fdf6e3")
+        (yellow    "#b58900")
+        (orange    "#cb4b16")
+        (red       "#dc322f")
+        (magenta   "#d33682")
+        (violet    "#6c71c4")
+        (blue      "#268bd2")
+        (cyan      "#2aa198")
+        (green     "#859900"))
+    (custom-set-faces
+     `(agda2-highlight-keyword-face ((t (:foreground ,orange))))
+     `(agda2-highlight-string-face ((t (:foreground ,magenta))))
+     `(agda2-highlight-number-face ((t (:foreground ,violet))))
+     `(agda2-highlight-symbol-face ((((background ,base3)) (:foreground ,base01))))
+     `(agda2-highlight-primitive-type-face ((t (:foreground ,blue))))
+     `(agda2-highlight-bound-variable-face ((t nil)))
+     `(agda2-highlight-inductive-constructor-face ((t (:foreground ,green))))
+     `(agda2-highlight-coinductive-constructor-face ((t (:foreground ,yellow))))
+     `(agda2-highlight-datatype-face ((t (:foreground ,blue))))
+     `(agda2-highlight-field-face ((t (:foreground ,red))))
+     `(agda2-highlight-function-face ((t (:foreground ,blue))))
+     `(agda2-highlight-module-face ((t (:foreground ,violet))))
+     `(agda2-highlight-postulate-face ((t (:foreground ,blue))))
+     `(agda2-highlight-primitive-face ((t (:foreground ,blue))))
+     `(agda2-highlight-record-face ((t (:foreground ,blue))))
+     `(agda2-highlight-dotted-face ((t nil)))
+     `(agda2-highlight-operator-face ((t nil)))
+     `(agda2-highlight-error-face ((t (:foreground ,red :underline t))))
+     `(agda2-highlight-unsolved-meta-face ((t (:background ,base03 :foreground ,yellow))))
+     `(agda2-highlight-unsolved-constraint-face ((t (:background ,base03 :foreground ,yellow))))
+     `(agda2-highlight-termination-problem-face ((t (:background ,orange :foreground ,base03))))
+     `(agda2-highlight-incomplete-pattern-face ((t (:background ,orange :foreground ,base03))))
+     `(agda2-highlight-typechecks-face ((t (:background ,cyan :foreground ,base03))))))
+#+END_SRC
+
+#+BEGIN_SRC sh
+wget -r https://svn.divms.uiowa.edu/repos/clc/projects/agda/ial-releases/1.2/
+#+END_SRC
+
+We start from Boolean. First we define a module:
+
+#+BEGIN_SRC agda2
+module bool where
+#+END_SRC
+
+Then we import another module called "level"
+
+#+BEGIN_SRC agda2
+
+open import level
+#+END_SRC
+
+Level is an helper module defined in this library. It looks like the
+following:
+
+#+BEGIN_SRC agda2
+-- mostly adapted from Agda stdlib
+
+module level where
+
+import Agda.Primitive 
+
+open Agda.Primitive public
+  using    (Level ; _⊔_ ; lsuc ; lzero)
+
+level = Level
+
+lone : level
+lone = lsuc lzero
+
+record Lift {a ℓ} (A : Set a) : Set (a ⊔ ℓ) where
+  constructor lift
+  field lower : A
+
+open Lift public
+#+END_SRC
+
+We are basically just defining a unit ~lone~. Apparently this is
+needed for the type ~Set~: if ~Set~ is the type of all types we would
+end up in nonterminating language, as ~Set~ would contain/represent
+itself. Agda's trick is to have a type ~Set n~ where ~n~ defines the
+level of representation at hand. Since ~n~ is infinite, this patches
+the issue with ~Set~ representing itself.
+
+Now, getting back to our Boolean module, we define a new data type:
+
+#+BEGIN_SRC agda2
+
+----------------------------------------------------------------------
+-- datatypes
+----------------------------------------------------------------------
+
+data 𝔹 : Set where
+ tt : 𝔹
+ ff : 𝔹
+#+END_SRC
+
+This is a set composed by two values: ~tt~ and ~ff~.
+
+#+BEGIN_SRC agda2
+
+-- this is an alias for Mac users who cannot see blackboard b.
+bool : Set
+bool = 𝔹
+
+{-# BUILTIN BOOL  𝔹  #-}
+{-# BUILTIN TRUE  tt  #-}
+{-# BUILTIN FALSE ff #-}
+#+END_SRC
+
+These are directives to the compiler: they substitute the builtin
+type for boolean values.
+
+#+BEGIN_SRC agda2
+
+----------------------------------------------------------------------
+-- syntax
+----------------------------------------------------------------------
+
+infix  7 ~_
+infix 6 _xor_ _nand_
+infixr 6 _&&_
+infixr 5 _||_ 
+infix  4 if_then_else_   if*_then_else_
+infixr 4 _imp_ 
+infix 4 _iff_
+#+END_SRC
+
+Note that underscores declare arguments. This means that both these
+declarations are valid:
+
+#+BEGIN_EXAMPLE
+_iff_ p1 p2
+
+p1 iff p2
+#+END_EXAMPLE
+
+The number stands for precedence. For example negation =~= has
+precedence over conjunction =&&=. Also ~infixr~ specifies that the
+operator associates to the right.
+
+We will prove with Agda that the direction of conjunction does not
+matter for associativity:
+
+#+BEGIN_SRC agda2
+...
+
+&&-assoc : ∀ (b1 b2 b3 : 𝔹) → b1 && (b2 && b3) ≡ (b1 && b2) && b3
+&&-assoc ff _ _ = refl
+&&-assoc tt _ _ = refl
+
+||-assoc : ∀ (b1 b2 b3 : 𝔹) → b1 || (b2 || b3) ≡ (b1 || b2) || b3
+||-assoc tt _ _ = refl
+||-assoc ff _ _ = refl
+
+...
+#+END_SRC
+
+Then finally we define the semantics of the operations (note that
+this is done only through pattern matching!):
+
+#+BEGIN_SRC agda2
+
+----------------------------------------------------------------------
+-- operations
+----------------------------------------------------------------------
+
+-- not
+~_ : 𝔹 → 𝔹
+~ tt = ff
+~ ff = tt
+
+_iff_ : 𝔹 → 𝔹 → 𝔹
+tt iff tt = tt
+tt iff ff = ff
+ff iff tt = ff
+ff iff ff = tt
+
+-- and
+_&&_ : 𝔹 → 𝔹 → 𝔹
+tt && b = b  -- ag: we introduce a variable as we do not care about the
+             -- second argument for this def
+ff && b = ff
+
+-- or
+_||_ : 𝔹 → 𝔹 → 𝔹
+tt || b = tt
+ff || b = b
+
+if_then_else_ : ∀ {ℓ} {A : Set ℓ} → 𝔹 → A → A → A -- ag: this is parameterization :) /ell is the level, 
+                                                  --the same as the Set n (which is better to write Set /ell)
+if tt then y else z = y -- patter match with assignment of variable: the last equal is the definition
+if ff then y else z = z
+
+if*_then_else_ : ∀ {ℓ} {A B : Set ℓ} → (b : 𝔹) → A → B → if b then A else B
+if* tt then a else b = a
+if* ff then a else b = b
+
+_xor_ : 𝔹 → 𝔹 → 𝔹 
+tt xor ff = tt
+ff xor tt = tt
+tt xor tt = ff
+ff xor ff = ff
+
+-- implication
+_imp_ : 𝔹 → 𝔹 → 𝔹 
+tt imp b2 = b2
+ff imp b2 = tt
+
+-- also called the Sheffer stroke
+_nand_ : 𝔹 → 𝔹 → 𝔹
+tt nand tt = ff
+tt nand ff = tt
+ff nand tt = tt
+ff nand ff = tt
+
+_nor_ : 𝔹 → 𝔹 → 𝔹
+x nor y = ~ (x || y)
+#+END_SRC
+
+Also Agda cares about indentation! Nested subexpression require at
+least one space indentation.
+
+A cool thing is that finally types are first class citizens: try to
+evaluate with ~<CcCd>~ the following:
+
+#+BEGIN_EXAMPLE
+if tt then bool else bool
+#+END_EXAMPLE
+
+It will return a Set type :)
+
+My solutions to the exercises:
+
+#+BEGIN_SRC agda2
+module my-bool where
+
+open import bool
+
+_imp1_ : 𝔹 → 𝔹 → 𝔹
+tt imp1 b2 = b2
+ff imp1 b2 = tt
+
+data Day : Set where
+ monday : Day
+ tuesday : Day
+ wednesday : Day
+ thursday : Day
+ friday : Day
+ saturday : Day
+ sunday : Day
+
+nextday_ : Day -> Day
+nextday monday =    tuesday
+nextday tuesday =   wednesday
+nextday wednesday = thursday
+nextday thursday =  friday
+nextday friday =    saturday
+nextday saturday =  sunday
+nextday sunday =    monday
+
+data Suit : Set where
+ hearts : Suit
+ spades : Suit
+ diamonds : Suit
+ clubs : Suit
+
+isred_ : Suit -> 𝔹
+isred hearts = tt
+isred diamonds = tt
+isred a = ff
+#+END_SRC

@@ -1,0 +1,39 @@
+* Getting started
+:PROPERTIES:
+:CREATED:  [2018-11-10 Sat 18:41]
+:END:
+
+This repository represents roughly my progress in studying Agda
+through [[https://dl.acm.org/citation.cfm?id=2841316][Verified Functional Programming in Agda]] by Aaron Stump.
+
+There are notes around representing my learning, so feel free to pick
+in them.
+
+* How to run
+:PROPERTIES:
+:CREATED:  [2018-11-10 Sat 18:44]
+:END:
+
+Nix is a purely functional package manager. This seems to fit with the
+book's spirit. You can install Nix by following the instructions at
+https://nixos.org/nix/download.html, or simply by running:
+
+#+BEGIN_SRC sh :noeval
+curl https://nixos.org/nix/install | sh
+#+END_SRC
+
+Then just run in the terminal:
+
+#+BEGIN_SRC sh :noeval
+nix-shell
+#+END_SRC
+
+This command will interpret the =default.nix= file present in the root
+directory of the repository. It will install Agda 2.5.4.2 and a ready
+to use Emacs. Also it will download the Iowa Agda Library (IAL)
+developed and used by the author to introduce Agda in the book.
+
+
+
+
+
