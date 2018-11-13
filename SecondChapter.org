@@ -1,0 +1,229 @@
+# Created 2018-11-14 Wed 00:50
+#+TITLE: go through second chapter
+#+AUTHOR: Andrea Giugliano
+Let's discover the shining dark of Agda: theorem proving!
+
+First let's define a theorem to prove:
+
+#+BEGIN_SRC agda2
+module bool-test where
+
+open import bool
+open import eq
+open import level
+
+~~tt : ~ ~ tt ≡ tt
+~~tt = refl
+#+END_SRC
+
+We state that a double negation of true produce true. The interesting
+bit here is how similar is a theorem to a definition. Take for
+example, the definition of negation:
+
+#+BEGIN_SRC agda2
+-- not
+~_ : 𝔹 → 𝔹
+~ tt = ff
+~ ff = tt
+#+END_SRC
+
+In both we have a type definition (=~~tt : ~ ~ tt ≡ tt= and =~_ : 𝔹 →
+𝔹= respectively), and a definition part (=~~tt = refl= and =~ tt = ff
+~ ff = tt= respectively).
+
+So basically proof and code can be treated transparently. All of
+this is possible thanks to the The "Curry-Howard Isomorphism":
+basically there is a bidirectional transformation between logic,
+algebra, and types.
+
+So what is the type of =≡=? It's type is ={ℓ : Level} {A : Set ℓ} → A
+→ A → Set ℓ=. So given two elements of a set of a certain level, it
+returns a set of the same level. So basically, the theorem itself is a
+type.
+
+Another important part of the above theorem is the use of =refl=. This
+stands for reflexivity: given two same objects, they are equivalent
+for reflexivity. 
+
+What is =refl= type? It's type is =_x_4 ≡ _x_4=. So reflexivity
+produces a proof type: this is just too cool!
+
+By the way, this means that =refl= has implicit type parameters that
+we can instantiate: 
+
+#+BEGIN_SRC agda2
+~~tt : ~ ~ tt ≡ tt
+~~tt = refl{lzero}{𝔹}{tt} -- refl type is {ℓ : Level} {A : Set ℓ} → A → A → Set ℓ
+                          -- so the associations are 
+                          --   lzero -> ℓ, 
+                          --   𝔹 -> Set ℓ, 
+                          --   tt -> A
+#+END_SRC
+
+Let's generalize our result then: universal quantification!
+
+#+BEGIN_SRC agda
+module bool-thms where
+
+open import bool
+open import eq
+open import sum
+
+~~-elim : ∀ (b : 𝔹) → ~ ~ b ≡ b
+~~-elim tt = refl
+~~-elim ff = refl
+#+END_SRC
+
+Again Agda's pattern matching looks elegant for a universal quantified
+variable.
+
+- type refinement :: Agda resolves the theorem starting from the
+  instantiation of the pattern matching: once we give =~~-elim tt=
+  as a pattern match, Agda substitutes =b= with =tt= in the
+  formula: so =~ ~ b ≡ b= becomes =~ ~ tt ≡ tt=. Now, Agda
+  substitutes with the =~= definition and gets =~ ff ≡ tt=, then
+  ==tt ≡ tt==. At this point =refl= is the solution!
+
+Let's compare the universal quantifier uses:
+
+1. as universal quantifier on the type set =~~-elim : ∀ (b : 𝔹) → ~ ~
+      b ≡ b=
+2. as a way to express polymorphism =if_then_else_ : ∀ {ℓ} {A : Set ℓ}
+      → 𝔹 → A → A → A=
+
+In both cases it quantifies over a type.
+
+Agda fills in question marks with holes (does it do it also for normal
+definitions, or only for proofs?). For example the theorem definition
+
+#+BEGIN_SRC agda2
+~~-elim : ∀ (b : 𝔹) → ~ ~ b ≡ b
+~~-elim = ?
+#+END_SRC
+
+after pressing =CcCl= becomes
+
+#+BEGIN_SRC agda2
+~~-elim : ∀ (b : 𝔹) → ~ ~ b ≡ b
+~~-elim = { }0
+#+END_SRC
+
+With the goal buffer showing:
+
+#+BEGIN_SRC agda2
+?0 : (b : 𝔹) → ~ (~ b) ≡ b
+#+END_SRC
+
+Holes seem goals. They are modifiable in place. Given enough context,
+Agda can also find the hole solution for us.
+
+
+Apparently implicit parameters can be useful in compacting the syntax.
+For example we can universally quantify on a type (note that Agda can
+infer the type of the following through the type of =&&=):
+#+BEGIN_SRC agda2
+&&-idem : ∀ {b} → b && b ≡ b
+&&-idem{tt} = refl
+&&-idem{ff} = refl
+#+END_SRC
+
+Now if we want to use this theorem in another proof we can avoid to
+explicitly state the values =tt= and =ff=.
+
+And more: hypothesis! The idea is that other theorems can work as
+hypothesis through implication:
+
+#+BEGIN_SRC agda2
+||≡ff₁ : ∀ {b1 b2} → b1 || b2 ≡ ff → ff ≡ b1
+||≡ff₁ {ff} p = refl
+||≡ff₁ {tt} ()
+#+END_SRC
+
+So given the hypothesis =b1 || b2 ≡ ff= we expect =b1= to be false.
+We see that instantiating =b1= to =ff= and =b2= to a variable value
+=p=, we can prove the case by reflexivity. When =b1= is equal to =tt=
+instead, we can use =()=, which is a rule that stands for absurd.
+
+The absurd pattern is used to quit early in the proof when we
+recognize an impossible hypothesis: in this case if =b1= is =tt=, then
+we are gonna have =tt || b2 ≡ ff=, that is =tt ≡ ff=, which is
+impossible.
+
+
+#+BEGIN_SRC agda2
+||≡ff₁ : ∀ {b1 b2} → b1 || b2 ≡ ff → ff ≡ b1
+||≡ff₁ {ff} p = refl
+||≡ff₁ {tt} p = sym p
+#+END_SRC
+The rule =sym= stands for symmetry. Its type is ={ℓ :
+.Agda.Primitive.Level} {A : Set ℓ} {x y : A} → x ≡ y → y ≡ x=:
+basically given a value, it flips the order of the equation.
+
+Another interesting proof is the following:
+#+BEGIN_SRC agda2
+||-cong₁ : ∀ {b1 b1' b2} → b1 ≡ b1' → b1 || b2 ≡ b1' || b2
+||-cong₁ refl = refl
+#+END_SRC
+
+Here we use =refl= on both sides of the pattern. This works only
+because the =b1= can be substituted by =b1'=, and the formulas become
+equivalent.
+
+Finally, we have another rule to take in account:
+#+BEGIN_SRC agda2
+||-cong₂ : ∀ {b1 b2 b2'} → b2 ≡ b2' → b1 || b2 ≡ b1 || b2'
+||-cong₂ p rewrite p = refl
+#+END_SRC
+
+=rewrite= just simplifies terms: in this case the =b2= on the left
+hand side of the theorem would be solved by reflexivity if it were a
+=b2'=...
+
+The Curry-Horward targeted constructive logic which is a subset of
+classical logic. The principle is that we want to know exactly what
+makes us sure that a fact is valid: for example, if the predicate
+=a || b= returns =tt=, in constructive logic we must know which of the
+terms produced =tt=; while in classic logic we can be uncertain.
+
+Certain proofs are non constructive. Id est, these proofs rely on the
+excluded middle theorem: a predicate can only be true or false. Agda
+does not support these proofs.
+
+And universal quantification on types:
+#+BEGIN_SRC agda2
+ite-same : ∀{ℓ}{A : Set ℓ} → 
+           ∀(b : 𝔹) (x : A) → 
+           (if b then x else x) ≡ x
+ite-same tt x = refl
+ite-same ff x = refl
+#+END_SRC
+
+This just says that an =if_then_else_= with the same return for both
+clauses is equivalent to the return itself. This theorem can be
+abstracted over any type.
+
+
+My solution to the exercises:
+
+#+BEGIN_SRC agda2
+||≡ff : ∀ {b1 b2} → b1 || b2 ≡ ff → ff ≡ b1
+||≡ff {tt} p  = sym p -- ag: the idea is just reverse the formula "tt || b2 ≡ ff" as this becomes  ff ≡ tt || b2 → ff ≡ tt
+||≡ff {ff} p  = refl
+
+excluded-middle : ∀{b} → b || ~ b ≡ tt
+excluded-middle{tt} = refl
+excluded-middle{ff} = refl
+
+a : tt ≡ tt
+a = refl
+b : ff ≡ ff
+b = refl
+-- ff ≡ tt nope
+d : ff && ff ≡ ~ tt
+d = refl
+e : ∀ (x : 𝔹) → tt && x ≡ x
+e x = refl
+f : ∀ (x : 𝔹) → x && tt ≡ x
+f tt = refl
+f ff = refl
+#+END_SRC
