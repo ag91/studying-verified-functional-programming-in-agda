@@ -1,0 +1,268 @@
+# Created 2018-12-16 Sun 23:53
+#+TITLE: go through fourth chapter
+#+AUTHOR: Andrea Giugliano
+Finally we get into abstract data structures! We can define a list in
+Agda as follows:
+
+#+BEGIN_SRC agda2
+data 𝕃 {ℓ} (A : Set ℓ) : Set ℓ where
+  [] : 𝕃 A
+  _::_ : (x : A) (xs : 𝕃 A) → 𝕃 A
+
+infixr 6 _::_ _++_ 
+#+END_SRC
+
+Essentially, ~A~ is our type parameter (which is indeed a set of a
+given level). We use this type parameter in the List data type
+constructors. We finally define the priority of the infix right cons
+operator.
+
+Operations are not difficult to define: for this kind of types we will
+need a lot of recursion (and so induction in our proofs).
+
+#+BEGIN_SRC agda2
+length : ∀{ℓ}{A : Set ℓ} → 𝕃 A → ℕ
+length [] = 0
+length (x :: xs) = suc (length xs)
+#+END_SRC
+
+Fancy stuff happens for functions that take a type parameter
+themselves:
+
+#+BEGIN_SRC agda2
+foldr : ∀{ℓ ℓ'}{A : Set ℓ}{B : Set ℓ'} → (A → B → B) → B → 𝕃 A → B
+foldr f b [] = b
+foldr f b (a :: as) = f a (foldr f b as)
+#+END_SRC
+
+In this case we define a function that applies a function from types
+that we have as parameters: this is an high order function. This is
+the wonderful power of expressive functional languages.
+
+Naturally Agda has a catchy syntax for anonymous functions:
+
+#+BEGIN_SRC agda2
+λ a b → b
+#+END_SRC
+
+This is for example the identity function for ~foldr~. If we call ~foldr~ like this:
+
+#+BEGIN_SRC agda2
+foldr (λ a b → b) tt (1 :: 2 :: [])
+#+END_SRC
+
+No matter the input we give it, ~foldr~ will always return ~tt~.
+
+Let's now get into proving properties. The author proposes a simple
+lemma: appending lists should always return a list with length equal
+to the sum of lengths of the original lists. It is a mouthful, but in
+Agda becomes very compact:
+
+#+BEGIN_SRC agda2
+length-++ : ∀{ℓ}{A : Set ℓ}(l1 l2 : 𝕃 A) → 
+            length (l1 ++ l2) ≡ (length l1) + (length l2)
+length-++ [] l2 = refl
+length-++ (h :: t) l2 rewrite length-++ t l2 = refl
+#+END_SRC
+
+As we expected, we use induction with ~rewrite~ to show this property
+holds. (The basic step simplifies to =length l2 = 0 + lenght l2=,
+while the inductive step simplifies to =suc (length l1' ++ l2) = suc
+(length l1' + length l2)=.)
+
+Let's now extend our knowledge of Agda constructs. It may happen that
+we need to analyze the cases for a definition: Agda allows to do
+pattern matching in a definition through the =with= construct.
+
+Say we want to prove a lemma about ~filter~ (an high order function
+that removes elements of a list that do not satisfy a given
+predicate). This states that the length of the list produced by
+~filter~ may only have a length shorter or equal to the input list:
+
+#+BEGIN_SRC agda2
+length-filter : ∀{ℓ}{A : Set ℓ}(p : A → 𝔹)(l : 𝕃 A) →
+                length (filter p l) ≤ length l ≡ tt
+#+END_SRC
+
+Let's go step by step for this proof.
+The basic step is easy: for an empty input list the length can only be
+zero. This is given by the Agda simplifier.
+
+#+BEGIN_SRC agda2
+length-filter p [] = refl
+#+END_SRC
+
+Next we have the inductive step. But in this definition we have two
+cases: if the predicate is true, ~filter~ will include the element in
+the resulting list, otherwise it will ignore the element.
+
+For this reason we would like to analyze these two cases: let's use
+~with~:
+
+#+BEGIN_SRC agda2
+length-filter p (x :: l) with p x
+#+END_SRC
+
+Now we pattern match over the result of ~p x~ (luckily is a boolean
+:).
+First case, it returns ~tt~:
+
+#+BEGIN_SRC agda2
+length-filter p (x :: l) | tt = length-filter p l
+#+END_SRC
+
+The =|= symbol contains the result of the pattern match. Mind that the
+expression on the left contains the same values at the case splitting.
+This case is solved by induction on the remainder of the list.
+
+Second case, ~p x~ is returns ~ff~:
+
+#+BEGIN_SRC agda2
+length-filter p (x :: l) | ff =
+  ≤-trans{length (filter p l)} (length-filter p l) (≤-suc (length l))
+#+END_SRC
+
+For this we need another lemma we already proved. After
+simplification, the goal we need to solve looks like this:
+
+#+BEGIN_QUOTE
+length (filter p l) ≤ suc (length l) ≡ tt
+#+END_QUOTE
+
+Let's recover the main theorem we are using:
+
+#+BEGIN_SRC agda2
+≤-trans : ∀ {x y z : ℕ} → x ≤ y ≡ tt → y ≤ z ≡ tt → x ≤ z ≡ tt
+#+END_SRC
+
+In this theorem the =x < z = tt= bit is our =length (filter p l) ≤ suc
+(length l) ≡ tt=, so =x = length (filter p l)= and =z = suc (length
+l)=. 
+
+So we can start filling our theorem:
+
+#+BEGIN_SRC agda2
+length-filter p (x :: l) | ff =
+  ≤-trans{length (filter p l)} ? ?
+#+END_SRC
+
+We are now needing the arguments of the =≤-trans= theorem: for the
+first argument we need basically just need to find a suitable =y=. In
+our case the suitable =y= is =length l=, as we are trying to show
+=length (filter p l) ≤ length l ≡ tt=. So we use induction:
+
+#+BEGIN_SRC agda2
+length-filter p (x :: l) | ff =
+  ≤-trans{length (filter p l)} (length-filter p l) ?
+#+END_SRC
+
+Knowing the =y= makes simple to fill in our last predicate for
+=≤-trans=. However our theorem does not state anything about =suc=,
+and this is painful as it will not simplify easily. For this reason we
+use another theorem:
+
+#+BEGIN_SRC agda2
+≤-suc : ∀ (n : ℕ) → n ≤ suc n ≡ tt
+#+END_SRC
+
+With this we can handle =suc (length l)= and produce the predicate we
+were looking for, obtaining the initial proof:
+
+#+BEGIN_SRC agda2
+,#+BEGIN_SRC agda2
+length-filter p (x :: l) | ff =
+  ≤-trans{length (filter p l)} (length-filter p l) (≤-suc (length l))
+#+END_SRC
+
+Another construct of Agda can become fundamental for our proof. When
+we do case splitting with ~with~, we can only produce the result of
+the expression on which we did pattern matching. Now if that
+expression appears in pattern matched goal again, it is not
+simplified. Let's see another theorem where this problem makes our
+life difficult:
+
+#+BEGIN_SRC agda2
+filter-idem : ∀{ℓ}{A : Set ℓ}(p : A → 𝔹)(l : 𝕃 A) →
+              (filter p (filter p l)) ≡ (filter p l)
+#+END_SRC
+
+This theorem states that applying the same filter sequentially
+produces the same list produced by applying a filter once.
+
+The basic case is again trivial, as filtering an empty list produces
+an empty list.
+
+The inductive step is more interesting, and we as before would like to
+pattern match on the result of the predicate =p=:
+
+#+BEGIN_SRC agda2
+filter-idem p (x :: l) with p x
+filter-idem p (x :: l) | tt = ?
+filter-idem p (x :: l) | ff = ?
+#+END_SRC
+
+The funny thing is that the simplification is not working as expected.
+For instance for =p x = tt=, we are left with the following goal:
+
+#+BEGIN_QUOTE
+Goal: if p x then x :: filter p (filter p l) else
+      filter p (filter p l)
+      ≡ x :: filter p l
+————————————————————————————————————————————————————————————
+l  : 𝕃 .A
+x  : .A
+p  : .A → 𝔹
+.A : Set .ℓ
+.ℓ : Level
+#+END_QUOTE
+
+And clearly we would expect that =if p x then x :: filter p (filter p
+l) else filter p (filter p l)= would be simplified to =filter p
+(filter p l)=, since =(filter p (x :: l))= was simplified to =filter p
+l= right-hand side of the equation.
+
+This is where our new construct shine: let's store the pattern in a
+new variable!
+
+#+BEGIN_SRC agda2
+filter-idem p (x :: l) with keep (p x)
+filter-idem p (x :: l) | tt , p' rewrite p' | p' | filter-idem p l = refl
+filter-idem p (x :: l) | ff , p' rewrite p' = filter-idem p l
+#+END_SRC
+
+Here =keep (p x)= produces a sum type containing the product of the
+expression and an anonymous function producing an equality:
+
+#+BEGIN_SRC agda2
+-- this is called the inspect idiom, in the Agda stdlib
+keep : ∀{ℓ}{A : Set ℓ} → (x : A) → Σ A (λ y → x ≡ y)
+keep x = ( x , refl )
+#+END_SRC
+
+In our proof we use this with =p'=, which we use to rewrite the goal
+as many times as we want on both sides of the equation, and finally
+use induction to prove the theorem.
+
+Finally the exercises:
+
+#+BEGIN_SRC agda2
+takeWhile : ∀{ℓ}{A : Set ℓ} → (A → 𝔹) → 𝕃 A → 𝕃 A
+takeWhile p [] = []
+takeWhile p (x :: l) = if p x then x :: takeWhile p l else []
+
+takeWhile-repeat : ∀ {ℓ}{A : Set ℓ}(n : ℕ)(a : A)(p : A → 𝔹) → p a ≡ tt → takeWhile p (repeat n a) ≡ repeat n a
+takeWhile-repeat zero a p = λ _ → refl
+takeWhile-repeat (suc n) a p with keep (p a)
+takeWhile-repeat (suc n) a p | tt , p' rewrite p' | takeWhile-repeat n a p p' = λ _ → refl
+takeWhile-repeat (suc n) a p | ff , p' rewrite p' = λ ()
+
+take : ∀{ℓ}{A : Set ℓ} → (n : ℕ) → 𝕃 A → 𝕃 A
+take 0 l = []
+take (suc n) [] = []
+take (suc n) (x :: xs) = x :: (take n xs)
+
+take-nthTail : ∀ {ℓ}{A : Set ℓ}(n : ℕ)(l : 𝕃 A) → take n l ++ nthTail n l ≡ l
+take-nthTail zero l = refl
+take-nthTail (suc n) [] = refl
+take-nthTail (suc n) (x :: l) rewrite take-nthTail n l = refl
+#+END_SRC
