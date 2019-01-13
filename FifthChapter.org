@@ -1,0 +1,239 @@
+# Created 2019-01-13 Sun 16:21
+#+TITLE: go through fifth chapter
+#+AUTHOR: Andrea Giugliano
+Into the depth of dependent types now. So far we had an object with a
+given type and some properties we wanted to prove true.
+
+Some of the properties we really care about are called invariant:
+these need to hold on any instance of the object.
+
+Let's consider the list and length definitions that we have already encountered:
+
+#+begin_src agda2
+data 𝕃 {ℓ} (A : Set ℓ) : Set ℓ where
+  [] : 𝕃 A
+  _::_ : (x : A) (xs : 𝕃 A) → 𝕃 A
+
+length : ∀{ℓ}{A : Set ℓ} → 𝕃 A → ℕ
+length [] = 0
+length (x :: xs) = suc (length xs)
+#+end_src
+
+An invariant that we expect on the list is that adding elements
+affects the length of the list. For ascertain the invariant we would
+need proofs.
+
+What about embedding the invariant (and its proof) in the type itself?
+
+Let's look at a dependent typed version of list: vector
+
+#+begin_src agda2
+data 𝕍 {ℓ} (A : Set ℓ) : ℕ → Set ℓ where
+  [] : 𝕍 A 0
+  _::_ : {n : ℕ} → A → 𝕍 A n → 𝕍 A (suc n)
+#+end_src
+
+In the type we expressly state that we will have a vector type only if
+we give a natural. This natural represents the length of the vector,
+and the datatype cases define its value.
+
+This let us skip all proofs for length: for example the append
+operation now does not need any proof on length, as it enforces it in
+the type:
+
+#+begin_src agda2
+_++𝕍_ : ∀ {ℓ} {A : Set ℓ}{n m : ℕ} → 𝕍 A n → 𝕍 A m → 𝕍 A (n + m) -- here our proof!
+[]        ++𝕍 ys = ys
+(x :: xs) ++𝕍 ys = x :: xs ++𝕍 ys
+#+end_src
+
+But not only that, we can even avoid invalid definitions. For example
+defining ~head~ for a list is painful, as we have to handle the empty
+list case for which there is no head. In a dependent type setting
+there is no need of handling side effects (no exception, no monad): we
+define ~head~ only for vectors with a length greater than zero.
+
+#+begin_src agda2
+head𝕍 : ∀ {ℓ} {A : Set ℓ}{n : ℕ} → 𝕍 A (suc n) → A -- (suc n) does the magic here!
+head𝕍 (x :: _) = x
+#+end_src
+
+Similarly we can leave undefined the ~nth~ operation for indexes that
+are greater than the length of the list:
+
+#+begin_src agda2
+nth𝕍 : ∀ {ℓ} {A : Set ℓ}{m : ℕ} → (n : ℕ) → n < m ≡ tt → 𝕍 A m → A
+nth𝕍 0 _ (x :: _) = x
+nth𝕍 (suc n) p (_ :: xs) = nth𝕍 n p xs
+nth𝕍 (suc n) () []
+nth𝕍 0 () []
+#+end_src
+
+This definition introduces us to the difference between external and
+internal verification: all the proofs of external verified software
+can live separated from the definitions they refer to; the proofs of
+internal verified software need to embedded in the definition.
+
+Given the type ~nth𝕍 : ∀ {ℓ} {A : Set ℓ}{m : ℕ} → (n : ℕ) → n < m ≡ tt
+→ 𝕍 A m → A~, we have as (explicit) parameters:
+
+- the index ~(n : ℕ)~
+- a proof that the given index is smaller than the vector length ~n < m ≡ tt~
+- the vector to search ~𝕍 A m~
+
+The proof is the reason why the last two cases we use the impossible
+pattern to *define* the operation: we say that ~nth~ is undefined for
+any index in case of an empty vector, as the proof cannot hold.
+
+(Funny thing is that one can use holes to analyze cases. If one also
+uses the solver for proofs, the implementation of ~nth~ could be
+unexpected).
+
+
+We can do the same for datatypes with "more intense" invariant. Say we
+want to model a binary search tree. The invariant here has to do with
+the order of the elements: in such a tree values are added according
+to an order, so that one can skip accessing unneeded set of values
+during retrieval.
+
+Let's start from the imports that we will need for this data
+structure:
+
+#+begin_src agda2
+open import bool
+open import bool-thms2
+open import eq
+open import maybe
+open import product
+open import product-thms
+open import bool-relations using (transitive ; total)
+#+end_src
+
+All of the imports provide pieces we will need for the definition of
+the type. Note that we will need theorems. An interesting import is the
+one for the order: ~open import bool-relations using (transitive ;
+total)~. We will use a total order defined in a boolean fashion:
+
+#+begin_src agda2
+{- This file describes properties of computable relations. -}
+
+open import bool
+open import level
+open import eq
+open import product
+open import product-thms
+
+module bool-relations {ℓ : level}{A : Set ℓ} (_≤A_ : A → A → 𝔹) where
+
+reflexive : Set ℓ
+reflexive = ∀ {a : A} → a ≤A a ≡ tt
+
+transitive : Set ℓ
+transitive = ∀ {a b c : A} → a ≤A b ≡ tt → b ≤A c ≡ tt → a ≤A c ≡ tt
+
+total : Set ℓ
+total = ∀ {a b : A} → a ≤A b ≡ ff → b ≤A a ≡ tt
+
+total-reflexive : total → reflexive 
+total-reflexive tot {a} with keep (a ≤A a)
+total-reflexive tot {a} | tt , p = p
+total-reflexive tot {a} | ff , p = tot p
+
+_iso𝔹_ : A → A → 𝔹
+d iso𝔹 d' = d ≤A d' && d' ≤A d
+
+iso𝔹-intro : ∀{x y : A} → x ≤A y ≡ tt → y ≤A x ≡ tt → x iso𝔹 y ≡ tt
+iso𝔹-intro p1 p2 rewrite p1 | p2 = refl
+#+end_src
+
+The core part of the above module is the relation: ~_≤A_~. This
+represents the order. The rest of the definitions are properties the
+order respects. The isomorphism stands roughly for equality.
+
+Equipped of these definitions and theorems we can finally look at the
+binary search tree definition:
+
+#+begin_src agda2
+module bst (A : Set) (_≤A_ : A → A → 𝔹)
+           (≤A-trans : transitive _≤A_)
+           (≤A-total : total _≤A_) where
+
+open import bool-relations _≤A_ hiding (transitive ; total)
+open import minmax _≤A_ ≤A-trans ≤A-total
+
+data bst : A → A → Set where
+  bst-leaf : ∀ {l u : A} → l ≤A u ≡ tt → bst l u
+  bst-node : ∀ {l l' u' u : A}(d : A) → 
+               bst l' d → bst d u' → 
+               l ≤A l' ≡ tt → u' ≤A u ≡ tt → 
+               bst l u
+#+end_src
+
+We use the boolean order relation to order values of type A. The leaf
+is empty and its only invariant is that ~l~ and ~u~ (lowe and upper
+bound respectively) are in order. The node contains a value of type A
+~(d : A)~ and two trees ~bst l' d → bst d u'~. The invariant for the
+node is that its lower and upper bounds work as lower and upper bounds
+also for the subtrees ~l ≤A l' ≡ tt → u' ≤A u ≡ tt~.
+
+Given this let's look at an operation on trees: insert. This is where
+things become quite complicated:
+
+#+begin_src agda2
+bst-insert : ∀{l u : A}(d : A) → bst l u → bst (min d l) (max d u)
+bst-insert d (bst-leaf p) = bst-node d (bst-leaf ≤A-refl) (bst-leaf ≤A-refl) min-≤1 max-≤1
+bst-insert d (bst-node d' L R p1 p2) with keep (d ≤A d') 
+bst-insert d (bst-node d' L R p1 p2) | tt , p with bst-insert d L
+bst-insert d (bst-node d' L R p1 p2) | tt , p | L' rewrite p = 
+  bst-node d' L' (bst-inc-ub R (≤A-trans p2 max-≤2)) (min2-mono p1) ≤A-refl
+bst-insert d (bst-node d' L R p1 p2) | ff , p with bst-insert d R
+bst-insert d (bst-node d' L R p1 p2) | ff , p | R' rewrite p = 
+  bst-node d' (bst-dec-lb L p1) R' min-≤2 (max2-mono p2)
+#+end_src
+
+We use ~min~ and ~max~ to keep the type flexible: we want to add an
+element, but we do not know if the element is going to become the new
+lower or upper bound. This design decision affects our definition as
+the proofs now need to involve the ~min~ and ~max~ definitions (as
+well as some lemmas on them).
+
+Let's take a few of the cases: the simplest one is when we insert in a
+leaf tree. This is our first insertion, that will make the leaf a node
+with the given value. In ~bst-insert d (bst-leaf p) = bst-node d
+(bst-leaf ≤A-refl) (bst-leaf ≤A-refl) min-≤1 max-≤1~ we prove that the
+node contains the value and two leaves and we prove that the order
+between keys is preserved through ~min~ and ~max~ theorems.
+
+For the node insertion we do case analysis and we end doing proper
+theorem proving to define an implementation.
+
+
+
+Dependent typed languages need to provide abstractions to make types
+depend on other types. This is what Σ and ⊎ are for.
+
+#+begin_src agda2
+data Σ {ℓ ℓ'} (A : Set ℓ) (B : A → Set ℓ') : Set (ℓ ⊔ ℓ') where
+  _,_ : (a : A) → (b : B a) → Σ A B
+
+data _⊎_ {ℓ ℓ'} (A : Set ℓ) (B : Set ℓ') : Set (ℓ ⊔ ℓ') where
+  inj₁ : (x : A) → A ⊎ B
+  inj₂ : (y : B) → A ⊎ B
+#+end_src
+
+Σ generalizes products (really pairs). The second element of a pair
+exists in function of the first element: ~(b : B a)~ means that ~b~
+can use ~a~ for its definition (e.g., say ~A~ is a vector, ~B~ may
+depend of the vector length).
+
+⊎ generalizes sums. It is isomorphic to the logical or really.
+
+Some exercises:
+
+#+begin_src agda2
+-- 5.1
+_by_matrix : ℕ → ℕ → Set
+n by m matrix = 𝕍 (𝕍 ℕ n) m
+
+-- TO CONTINUE
+#+end_src
